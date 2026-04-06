@@ -27,9 +27,8 @@ jobs:
           arduino-cli lib install "ArduinoJson"
 
       - name: Compile Firmware
-        run: |
-          arduino-cli compile --fqbn esp32:esp32:esp32 Bushiri/Bushiri/
-
+  run: |
+    arduino-cli compile --fqbn esp32:esp32:esp32 Bushiri
       - name: Find bin file
         run: find . -name "*.bin" | head -20
 
