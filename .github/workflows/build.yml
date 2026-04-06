@@ -30,8 +30,13 @@ jobs:
         run: |
           arduino-cli compile --fqbn esp32:esp32:esp32 Bushiri/Bushiri/
 
+      - name: Find bin file
+        run: find . -name "*.bin" | head -20
+
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
           name: bushiri-firmware
-          path: Bushiri/Bushiri/build/esp32.esp32.esp32/*.bin
+          path: |
+            **/*.bin
+          if-no-files-found: warn
