@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install Arduino CLI
         run: |
@@ -30,7 +30,7 @@ jobs:
           arduino-cli compile --fqbn esp32:esp32:esp32 Bushiri/Bushiri/
 
       - name: Upload Firmware
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bushiri-firmware
           path: Bushiri/Bushiri/build/esp32.esp32.esp32/*.bin
