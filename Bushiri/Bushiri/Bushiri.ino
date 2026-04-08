@@ -1,4 +1,5 @@
-/**
+/**#include "esp_wifi.h"
+#include "tcpip_adapter.h"
  * PROJECT BUSHIRI v3.0
  * MPESA Captive Portal + MAC Whitelist + VPS Verify + NAT Internet
  * Bei: TZS 800 = Siku nzima
@@ -162,8 +163,11 @@ String getMACFromIP(String ip) {
   wifi_sta_list_t stationList;
   esp_netif_sta_list_t adapterList;
 
-  esp_wifi_ap_get_sta_list(&stationList);
-  esp_netif_get_sta_list(&stationList, &adapterList);
+  wifi_sta_list_t stationList;
+tcpip_adapter_sta_list_t adapterList;
+
+esp_wifi_ap_get_sta_list(&stationList);
+tcpip_adapter_get_sta_list(&stationList, &adapterList);
 
   for (int i = 0; i < adapterList.num; i++) {
     char ip_str[16];
