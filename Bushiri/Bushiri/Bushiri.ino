@@ -153,37 +153,26 @@ void loadSessionsFromPrefs() {
 
 // ==================== GET CLIENT MAC ====================
 String getClientMAC() {
-  struct station_info* stations = NULL;
-  wifi_sta_list_t stationList;
-  esp_wifi_ap_get_sta_list(&stationList);
-
-  // Tumia IP ya client kupata MAC
-  String clientIP = server.client().remoteAddress().toString();
-
-  // Njia rahisi - tumia MAC ya AP kama placeholder
-  // Kwenye ESP32 halisi, tutapata MAC kutoka ARP table
-  uint8_t mac[6];
-  esp_wifi_get_mac(WIFI_IF_AP, mac);
-  char macStr[18];
-  sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
-          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-
-  // Tumia IP address kama identifier badala ya MAC
-  // kwa sababu AP MAC ni moja tu
-  return clientIP; // Tutabadilisha hii baadaye
+  IPAddress clientAddr = server.client().remoteIP();
+  return getMACFromIP(clientAddr.toString());
 }
 
-// Pata MAC halisi ya client kutoka IP
+// Pata MAC halisi ya client kutoka IP - ESP32 core v3.x
 String getMACFromIP(String ip) {
   wifi_sta_list_t stationList;
-  tcpip_adapter_sta_list_t adapterList;
+  esp_netif_sta_list_t adapterList;
 
   esp_wifi_ap_get_sta_list(&stationList);
-  tcpip_adapter_get_sta_list(&stationList, &adapterList);
+  esp_netif_get_sta_list(&stationList, &adapterList);
 
   for (int i = 0; i < adapterList.num; i++) {
     char ip_str[16];
-    sprintf(ip_str, IPSTR, IP2STR(&adapterList.sta[i].ip));
+    esp_ip4_addr_t addr = adapterList.sta[i].ip;
+    sprintf(ip_str, "%d.%d.%d.%d",
+            (addr.addr) & 0xFF,
+            (addr.addr >> 8) & 0xFF,
+            (addr.addr >> 16) & 0xFF,
+            (addr.addr >> 24) & 0xFF);
     if (String(ip_str) == ip) {
       char macStr[18];
       uint8_t* mac = adapterList.sta[i].mac;
@@ -192,7 +181,7 @@ String getMACFromIP(String ip) {
       return String(macStr);
     }
   }
-  return ip; // Fallback - tumia IP
+  return ip; // Fallback - tumia IP kama identifier
 }
 
 // ==================== VPS VERIFY ====================
@@ -297,8 +286,7 @@ void setupWebServer() {
 
 // ==================== PORTAL PAGE (Ukurasa wa Kwanza) ====================
 void portalPage() {
-  String clientIP = server.client().remoteAddress().toString();
-  String mac = getMACFromIP(clientIP);
+  String mac = getMACFromIP(server.client().remoteIP().toString());
 
   // Kama tayari ameidhinishwa - mpeleka internet
   if (isAuthorized(mac)) {
@@ -417,8 +405,7 @@ function showLoading(){
 void handleVerify() {
   String txid = server.arg("txid");
   String phone = server.arg("phone");
-  String clientIP = server.client().remoteAddress().toString();
-  String mac = getMACFromIP(clientIP);
+  String mac = getMACFromIP(server.client().remoteIP().toString());
 
   txid.trim();
   txid.toUpperCase();
@@ -512,8 +499,7 @@ h2{font-size:1.5em;margin-bottom:15px}
 
 // ==================== CAPTIVE REDIRECT ====================
 void captiveRedirect() {
-  String clientIP = server.client().remoteAddress().toString();
-  String mac = getMACFromIP(clientIP);
+  String mac = getMACFromIP(server.client().remoteIP().toString());
 
   if (isAuthorized(mac)) {
     server.send(200, "text/plain", "OK - Internet Imeunganika");
