@@ -12,6 +12,7 @@
 #include <Update.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include "lwip/lwip_napt.h"
 
 // ==================== EDIT HAPA TU ====================
 
@@ -22,7 +23,7 @@ const int   VPS_PORT    = 443;
 const char* VPS_TOKEN   = "bushiri2026";
 const char* PORTAL_TITLE = "BUSHIRI HOTSPOT";
 const char* MPESA_NUMBER = "0790385813";
-const char* STA_SSID_ALT = "hhb";
+const char* STA_SSID_ALT = "infinitynetwork";
 const char* STA_PASS_ALT = ".kibushi1";
 
 // MAC/IP yako - unapata internet bure (weka IP yako: 192.168.4.x)
@@ -239,7 +240,11 @@ void setup() {
   WiFi.softAPConfig(local_IP, gateway, subnet);
   WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 8);
 
-  connectToInternet();
+  connectToInternet();// Washa NAT routing
+if (WiFi.status() == WL_CONNECTED) {
+  ip_napt_enable(htonl(0xC0A80401), 1);
+  Serial.println("NAT Enabled!");
+}
 
   dnsServer.start(53, "*", IPAddress(192, 168, 4, 1));
   setupWebServer();
