@@ -16,7 +16,6 @@ void captiveRedirect();
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WebServer.h>
-WebServer server(80);
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <Update.h>
@@ -326,7 +325,7 @@ server.on("/generate_204", HTTP_GET, []() {
 }
 
 // ==================== PORTAL PAGE (Ukurasa wa Kwanza) ====================
-void captiveRedirect() {
+
   String mac = getMACFromIP(server.client().remoteIP().toString());
   
   if (isAuthorized(mac)) {
