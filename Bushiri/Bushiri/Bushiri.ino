@@ -3,10 +3,20 @@
  * MPESA Captive Portal + MAC Whitelist + VPS Verify + NAT Internet
  * Bei: TZS 800 = Siku nzima
  */
-
+void setupOTA();
+void portalPage();
+void paymentPage();
+void handleVerify();
+void successPage();
+void adminPanel();
+void wifiConfigPage();
+void saveWifiConfig();
+void sendErrorPage(String message);
+void captiveRedirect();
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WebServer.h>
+WebServer server(80);
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <Update.h>
