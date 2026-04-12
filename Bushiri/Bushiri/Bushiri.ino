@@ -394,8 +394,10 @@ body{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);min-height:100vh
     <a href='/pay' class='btn'>✅ Nimelipa - Ingia Sasa</a>
   </div>
 </div></body></html>)";
-
+void portalPage() {
+  String html = "<h1>Hello</h1>";
   server.send(200, "text/html", html);
+
 }
 
 // ==================== PAYMENT PAGE (Weka TXID) ====================
