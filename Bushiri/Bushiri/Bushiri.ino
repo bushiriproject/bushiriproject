@@ -1,18 +1,9 @@
 /**
- * PROJECT BUSHIRI v3.0
- * MPESA Captive Portal + MAC Whitelist + VPS Verify + NAT Internet
- * Bei: TZS 800 = Siku nzima
+ * PROJECT BUSHIRI v3.1
+ * MPESA/MIXX Captive Portal + NAT Router + VPS Verify
+ * Bei: TZS 800 = Masaa 15
  */
-void setupOTA();
-void portalPage();
-void paymentPage();
-void handleVerify();
-void successPage();
-void adminPanel();
-void wifiConfigPage();
-void saveWifiConfig();
-void sendErrorPage(String message);
-void captiveRedirect();
+
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WebServer.h>
@@ -24,36 +15,30 @@ void captiveRedirect();
 #include "lwip/lwip_napt.h"
 
 // ==================== EDIT HAPA TU ====================
-
-const char* AP_SSID     = "Bushiri WiFi";
-const char* AP_PASS     = "";
-const char* VPS_HOST    = "bushiri-project.onrender.com";
-const int   VPS_PORT    = 443;
-const char* VPS_TOKEN   = "bushiri2026";
+const char* AP_SSID      = "Bushiri WiFi";
+const char* AP_PASS      = "";
+const char* VPS_HOST     = "bushiri-project.onrender.com";
+const int   VPS_PORT     = 443;
+const char* VPS_TOKEN    = "bushiri2026";
 const char* PORTAL_TITLE = "BUSHIRI HOTSPOT";
-const char* MIXX_NUMBER = "0717633805";
+const char* MIXX_NUMBER  = "0717633805";
 const char* STA_SSID_ALT = "infinitynetwork";
 const char* STA_PASS_ALT = ".kibushi1";
-
-// MAC/IP yako - unapata internet bure (weka IP yako: 192.168.4.x)
-String ownerMAC = "192.168.4.2";
-
+String ownerIP = "192.168.4.2";
 // ======================================================
 
 #define PROJECT_NAME "BUSHIRI"
-#define VERSION "3.0.0"
+#define VERSION "3.1.0"
 #define MAX_CLIENTS 20
-#define SESSION_HOURS 15
 
 struct ClientSession {
-  String mac;
-  unsigned long expiry; // millis
+  String ip;
+  unsigned long expiry;
   bool active;
 };
 
 ClientSession sessions[MAX_CLIENTS];
 int sessionCount = 0;
-
 String sta_ssid = "";
 String sta_pass = "";
 
@@ -62,7 +47,53 @@ DNSServer dnsServer;
 Preferences prefs;
 int clientCount = 0;
 unsigned long lastHeartbeat = 0;
-unsigned long lastSessionCheck = 0;
+
+// ==================== FORWARD DECLARATIONS ====================
+void portalPage();
+void paymentPage();
+void handleVerify();
+void successPage();
+void adminPanel();
+void wifiConfigPage();
+void saveWifiConfig();
+void sendErrorPage(String message);
+void captiveRedirect();
+void setupOTA();
+bool verifyWithVPS(String txid, String mac, String &message);
+
+// ==================== SESSION ====================
+bool isAuthorized(String ip) {
+  if (ip == ownerIP) return true;
+  for (int i = 0; i < sessionCount; i++) {
+    if (sessions[i].active && sessions[i].ip == ip) {
+      if (millis() < sessions[i].expiry) return true;
+      else sessions[i].active = false;
+    }
+  }
+  return false;
+}
+
+bool addSession(String ip, unsigned long durationMs) {
+  for (int i = 0; i < sessionCount; i++) {
+    if (sessions[i].ip == ip) {
+      sessions[i].active = true;
+      sessions[i].expiry = millis() + durationMs;
+      return true;
+    }
+  }
+  if (sessionCount < MAX_CLIENTS) {
+    sessions[sessionCount].ip = ip;
+    sessions[sessionCount].active = true;
+    sessions[sessionCount].expiry = millis() + durationMs;
+    sessionCount++;
+    return true;
+  }
+  return false;
+}
+
+String getClientIP() {
+  return server.client().remoteIP().toString();
+}
 
 // ==================== WIFI ====================
 void connectToInternet() {
@@ -83,7 +114,7 @@ void connectToInternet() {
     Serial.println("\nMain failed - trying alt...");
   }
 
-  Serial.print("Connecting to alt: " + String(STA_SSID_ALT));
+  Serial.print("Alt: " + String(STA_SSID_ALT));
   WiFi.begin(STA_SSID_ALT, STA_PASS_ALT);
   int t = 0;
   while (WiFi.status() != WL_CONNECTED && t < 20) {
@@ -92,87 +123,18 @@ void connectToInternet() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\nAlt connected: " + WiFi.localIP().toString());
   } else {
-    Serial.println("\nNo internet - offline mode");
+    Serial.println("\nNo internet");
   }
 }
 
 void maintainWiFi() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi lost - reconnecting...");
     connectToInternet();
   }
 }
 
-// ==================== SESSION MANAGEMENT ====================
-bool isAuthorized(String mac) {
-  mac.toUpperCase();
-  if (mac == ownerMAC) return true;
-  for (int i = 0; i < sessionCount; i++) {
-    if (sessions[i].active && sessions[i].mac == mac) {
-      if (millis() < sessions[i].expiry) return true;
-      else sessions[i].active = false; // Muda umeisha
-    }
-  }
-  return false;
-}
-
-bool addSession(String mac) {
-  mac.toUpperCase();
-  // Angalia kama tayari ipo
-  for (int i = 0; i < sessionCount; i++) {
-    if (sessions[i].mac == mac) {
-      sessions[i].active = true;
-      sessions[i].expiry = millis() + ((unsigned long)SESSION_HOURS * 3600000);
-      return true;
-    }
-  }
-  // Ongeza mpya
-  if (sessionCount < MAX_CLIENTS) {
-    sessions[sessionCount].mac = mac;
-    sessions[sessionCount].active = true;
-    sessions[sessionCount].expiry = millis() + ((unsigned long)SESSION_HOURS * 3600000);
-    sessionCount++;
-    // Hifadhi kwenye Preferences
-    saveSessionsToPrefs();
-    return true;
-  }
-  return false;
-}
-
-void saveSessionsToPrefs() {
-  prefs.putInt("sesCount", sessionCount);
-  for (int i = 0; i < sessionCount; i++) {
-    String key = "mac" + String(i);
-    prefs.putString(key.c_str(), sessions[i].mac);
-  }
-}
-
-void loadSessionsFromPrefs() {
-  int saved = prefs.getInt("sesCount", 0);
-  for (int i = 0; i < saved && i < MAX_CLIENTS; i++) {
-    String key = "mac" + String(i);
-    String mac = prefs.getString(key.c_str(), "");
-    if (mac.length() > 0) {
-      sessions[i].mac = mac;
-      sessions[i].active = false; // Baada ya restart - waache waverify tena
-      sessionCount++;
-    }
-  }
-}
-
-// ==================== GET CLIENT MAC ====================
-// Pata identifier ya client - tumia IP kama session key
-// ESP32 core v3.x hauna tcpip_adapter - IP inatosha kwa sessions
-String getClientMAC() {
-  return server.client().remoteIP().toString();
-}
-
-String getMACFromIP(String ip) {
-  return ip; // IP ndiyo identifier yetu
-}
-
 // ==================== VPS VERIFY ====================
-bool verifyWithVPS(String txid, String mac, String &message) {
+bool verifyWithVPS(String txid, String ip, String &message) {
   if (WiFi.status() != WL_CONNECTED) {
     message = "Hakuna internet - jaribu tena";
     return false;
@@ -180,22 +142,20 @@ bool verifyWithVPS(String txid, String mac, String &message) {
 
   WiFiClientSecure client;
   client.setInsecure();
-  client.setTimeout(10);
+  client.setTimeout(30);
 
   if (!client.connect(VPS_HOST, VPS_PORT)) {
     message = "VPS haipatikani - jaribu tena";
     return false;
   }
 
-  // Tengeneza JSON payload
   DynamicJsonDocument doc(256);
   doc["txid"] = txid;
-  doc["mac"] = mac;
+  doc["mac"] = ip;
   doc["token"] = VPS_TOKEN;
   String payload;
   serializeJson(doc, payload);
 
-  // Tuma HTTP POST
   client.println("POST /verify HTTP/1.1");
   client.println("Host: " + String(VPS_HOST));
   client.println("Content-Type: application/json");
@@ -204,9 +164,8 @@ bool verifyWithVPS(String txid, String mac, String &message) {
   client.println();
   client.print(payload);
 
-  // Soma response
   String response = "";
-  unsigned long timeout = millis() + 10000;
+  unsigned long timeout = millis() + 15000;
   bool headersEnded = false;
   while (client.connected() && millis() < timeout) {
     if (client.available()) {
@@ -216,11 +175,8 @@ bool verifyWithVPS(String txid, String mac, String &message) {
     }
   }
   client.stop();
-
   response.trim();
-  Serial.println("VPS Response: " + response);
 
-  // Parse JSON response
   DynamicJsonDocument res(512);
   DeserializationError err = deserializeJson(res, response);
   if (err) {
@@ -229,7 +185,15 @@ bool verifyWithVPS(String txid, String mac, String &message) {
   }
 
   bool success = res["success"] | false;
-  message = res["message"] | "Hitilafu isiyojulikana";
+  message = res["message"] | "Hitilafu";
+
+  // Pata muda kutoka VPS
+  if (success) {
+    // Default masaa 15 kama VPS haitumi duration
+    unsigned long durationMs = 15UL * 3600000UL;
+    addSession(ip, durationMs);
+  }
+
   return success;
 }
 
@@ -237,32 +201,29 @@ bool verifyWithVPS(String txid, String mac, String &message) {
 void setup() {
   Serial.begin(115200);
   delay(2000);
-  Serial.println("BUSHIRI v3.0 - MIXX Edition");
+  Serial.println("BUSHIRI v3.1 - MIXX Edition");
 
   prefs.begin("bushiri");
-  loadSessionsFromPrefs();
 
   WiFi.mode(WIFI_AP_STA);
   IPAddress local_IP(192, 168, 4, 1);
   IPAddress gateway(192, 168, 4, 1);
   IPAddress subnet(255, 255, 255, 0);
-  IPAddress dns(8, 8, 8, 8);
-WiFi.softAPConfig(local_IP, gateway, subnet);
-  WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 8);
-// Weka DNS kwa wateja
-IPAddress apIP(192, 168, 4, 1);
-dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-dnsServer.start(53, "*", apIP);
-  connectToInternet();// Washa NAT routing
-if (WiFi.status() == WL_CONNECTED) {
-  ip_napt_enable(htonl(0xC0A80401), 1);
-delay(1000); // Subiri WiFi iwe stable
-ip_napt_enable(htonl(0xC0A80401), 1);
-Serial.println("NAT Enabled!");
-  Serial.println("NAT Enabled!");
-}
+  WiFi.softAPConfig(local_IP, gateway, subnet);
+  WiFi.softAP(AP_SSID, AP_PASS, 6, 0, 8);
 
-  dnsServer.start(53, "*", IPAddress(192, 168, 4, 1));
+  connectToInternet();
+
+  // Washa NAT baada ya WiFi kuunganika
+  if (WiFi.status() == WL_CONNECTED) {
+    delay(1000);
+    ip_napt_enable(htonl(0xC0A80401), 1);
+    Serial.println("NAT Enabled!");
+  }
+
+  dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+  dnsServer.start(53, "*", local_IP);
+
   setupWebServer();
   setupOTA();
 
@@ -278,76 +239,62 @@ void setupWebServer() {
   server.on("/admin", HTTP_GET, adminPanel);
   server.on("/wifi-config", HTTP_GET, wifiConfigPage);
   server.on("/wifi-save", HTTP_POST, saveWifiConfig);
+
+  // Captive portal detection - Android
+  server.on("/generate_204", HTTP_GET, []() {
+    String ip = server.client().remoteIP().toString();
+    if (isAuthorized(ip)) {
+      server.send(204, "text/plain", "");
+    } else {
+      server.sendHeader("Location", "http://192.168.4.1/");
+      server.send(302, "text/plain", "");
+    }
+  });
+
+  // Captive portal detection - iPhone
+  server.on("/hotspot-detect.html", HTTP_GET, []() {
+    String ip = server.client().remoteIP().toString();
+    if (isAuthorized(ip)) {
+      server.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+    } else {
+      server.sendHeader("Location", "http://192.168.4.1/");
+      server.send(302, "text/plain", "");
+    }
+  });
+
+  // Captive portal detection - Windows
+  server.on("/connecttest.txt", HTTP_GET, []() {
+    String ip = server.client().remoteIP().toString();
+    if (isAuthorized(ip)) {
+      server.send(200, "text/plain", "Microsoft Connect Test");
+    } else {
+      server.sendHeader("Location", "http://192.168.4.1/");
+      server.send(302, "text/plain", "");
+    }
+  });
+
+  // Captive portal detection - Samsung/Android
+  server.on("/success.txt", HTTP_GET, []() {
+    String ip = server.client().remoteIP().toString();
+    if (isAuthorized(ip)) {
+      server.send(200, "text/plain", "success");
+    } else {
+      server.sendHeader("Location", "http://192.168.4.1/");
+      server.send(302, "text/plain", "");
+    }
+  });
+
   server.onNotFound(captiveRedirect);
-  server.begin();// Android captive portal detection
-server.on("/generate_204", HTTP_GET, []() {
-  String mac = getMACFromIP(server.client().remoteIP().toString());
-  if (isAuthorized(mac)) {
-    server.send(204, "text/plain", "");
-  } else {
-    server.sendHeader("Location", "http://192.168.4.1/");
-    server.send(302, "text/plain", "");
-  }
-});
-
-// iPhone captive portal detection  
-server.on("/hotspot-detect.html", HTTP_GET, []() {
-  String mac = getMACFromIP(server.client().remoteIP().toString());
-  if (isAuthorized(mac)) {
-    server.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
-  } else {
-    server.sendHeader("Location", "http://192.168.4.1/");
-    server.send(302, "text/plain", "");
-  }
-});
-
-// Windows captive portal detection
-server.on("/connecttest.txt", HTTP_GET, []() {
-  String mac = getMACFromIP(server.client().remoteIP().toString());
-  if (isAuthorized(mac)) {
-    server.send(200, "text/plain", "Microsoft Connect Test");
-  } else {
-    server.sendHeader("Location", "http://192.168.4.1/");
-    server.send(302, "text/plain", "");
-  }
-});
-
-// Samsung
-server.on("/generate_204", HTTP_GET, []() {
-  String mac = getMACFromIP(server.client().remoteIP().toString());
-  if (isAuthorized(mac)) {
-    server.send(204, "text/plain", "");
-  } else {
-    server.sendHeader("Location", "http://192.168.4.1/");
-    server.send(302, "text/plain", "");
-  }
-});
+  server.begin();
 }
 
-// ==================== PORTAL PAGE (Ukurasa wa Kwanza) ====================
-
-  String mac = getMACFromIP(server.client().remoteIP().toString());
-  
-  if (isAuthorized(mac)) {
-    // Mteja ameruhuliwa - mruhusu apite
-    // Jibu generate_204 vizuri ili android ijue internet ipo
-    server.send(204, "text/plain", "");
+// ==================== PORTAL PAGE ====================
+void portalPage() {
+  String ip = getClientIP();
+  if (isAuthorized(ip)) {
+    server.sendHeader("Location", "http://google.com");
+    server.send(302);
     return;
-  }
-  
-  // Mteja hajalipia - redirect kwenye portal
-  String host = server.hostHeader();
-  
-  // Kama ni captive portal check - redirect
-  if (host != "192.168.4.1") {
-    server.sendHeader("Location", "http://192.168.4.1/", true);
-    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    server.send(302, "text/plain", "");
-    return;
-  }
-  
-  // Onyesha portal
-  portalPage();
   }
 
   String html = R"(<!DOCTYPE html><html><head>
@@ -370,7 +317,7 @@ body{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);min-height:100vh
 .step{display:flex;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:0.9em;color:#444}
 .step-num{background:#e91e63;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:0.8em;margin-right:10px;flex-shrink:0}
 .btn{display:block;width:100%;padding:15px;background:linear-gradient(135deg,#e91e63,#c2185b);color:white;border:none;border-radius:12px;font-size:1.1em;font-weight:700;text-align:center;text-decoration:none;cursor:pointer;margin-top:15px}
-.mixx by yas-num{background:#e8f5e9;border-radius:8px;padding:10px;text-align:center;font-weight:700;font-size:1.1em;color:#2e7d32;margin:10px 0}
+.mixx-num{background:#e8f5e9;border-radius:8px;padding:10px;text-align:center;font-weight:700;font-size:1.1em;color:#2e7d32;margin:10px 0}
 </style></head><body>
 <div class='card'>
   <div class='header'>
@@ -381,27 +328,24 @@ body{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);min-height:100vh
   <div class='body'>
     <div class='price-box'>
       <div class='price'>TZS 800</div>
-      <div class='price-label'>= Siku nzima ya internet</div>
+      <div class='price-label'>= Masaa 15 ya internet</div>
     </div>
     <div class='steps'>
-      <div class='step'><div class='step-num'>1</div>Tuma TZS 800 kwa Mixx by yas</div>
+      <div class='step'><div class='step-num'>1</div>Tuma TZS 800 kwa MIXX BY YAS</div>
       <div class='step'><div class='step-num'>2</div>Nambari ya kulipa:</div>
     </div>
-    <div class='mixxby-num'>📱 )" + String(MIXX_NUMBER) + R"(</div>
+    <div class='mixx-num'>📱 )" + String(MIXX_NUMBER) + R"(</div>
     <div class='step' style='padding:8px 0;font-size:0.9em;color:#444'>
-      <div class='step-num'>3</div>Bonyeza kitufe hapa chini na weka nambari ya muamala
+      <div class='step-num'>3</div>Bonyeza hapa chini - weka namba ya kumbukumbu
     </div>
     <a href='/pay' class='btn'>✅ Nimelipa - Ingia Sasa</a>
   </div>
 </div></body></html>)";
-void portalPage() {
-  String html = "<h1>Hello</h1>";
+
   server.send(200, "text/html", html);
 }
-});
-}
 
-// ==================== PAYMENT PAGE (Weka TXID) ====================
+// ==================== PAYMENT PAGE ====================
 void paymentPage() {
   String html = R"(<!DOCTYPE html><html><head>
 <meta charset='utf-8'>
@@ -417,7 +361,7 @@ body{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);min-height:100vh
 .body{padding:25px}
 .info-box{background:#e3f2fd;border-radius:10px;padding:15px;margin-bottom:20px;font-size:0.85em;color:#1565C0;line-height:1.6}
 label{display:block;font-weight:600;color:#333;margin-bottom:6px;font-size:0.9em}
-input{width:100%;padding:14px;border:2px solid #ddd;border-radius:10px;font-size:1em;margin-bottom:15px;box-sizing:border-box;letter-spacing:1px}
+input{width:100%;padding:14px;border:2px solid #ddd;border-radius:10px;font-size:1em;margin-bottom:15px;box-sizing:border-box}
 input:focus{outline:none;border-color:#2196F3}
 .btn{width:100%;padding:15px;background:linear-gradient(135deg,#e91e63,#c2185b);color:white;border:none;border-radius:12px;font-size:1.1em;font-weight:700;cursor:pointer}
 .back{display:block;text-align:center;margin-top:12px;color:#666;font-size:0.85em;text-decoration:none}
@@ -426,25 +370,22 @@ input:focus{outline:none;border-color:#2196F3}
 <div class='card'>
   <div class='header'>
     <h2>✅ Thibitisha Malipo</h2>
-    <p>Weka nambari ya muamala wa M-Pesa</p>
+    <p>Weka namba ya kumbukumbu ya MIXX BY YAS</p>
   </div>
   <div class='body'>
     <div class='info-box'>
-      📩 Baada ya kutuma TZS 800, utapata SMS kutoka M-Pesa.<br>
-      SMS hiyo ina <b>nambari ya muamala</b> (Transaction ID).<br>
-      Mfano: <b>ABCD123456</b>
+      📩 Baada ya kutuma pesa utapata SMS kutoka MIXX BY YAS.<br>
+      SMS hiyo ina <b>Kumbukumbu no.</b><br>
+      Mfano: <b>26205921931320</b>
     </div>
     <form method='POST' action='/verify' onsubmit='showLoading()'>
-      <label>Nambari ya Muamala (TXID):</label>
-      <input type='text' name='txid' placeholder='Mfano: ABCD123456' 
-             required maxlength='20' style='text-transform:uppercase'
-             oninput='this.value=this.value.toUpperCase()'>
-      <label>Nambari yako ya Simu:</label>
-      <input type='tel' name='phone' placeholder='0712345678' 
-             required maxlength='10'>
+      <label>Namba ya Kumbukumbu (TXID):</label>
+      <input type='text' name='txid' placeholder='Mfano: 26205921931320' required maxlength='20'>
+      <label>Namba yako ya Simu:</label>
+      <input type='tel' name='phone' placeholder='0717633805' required maxlength='13'>
       <button type='submit' class='btn'>🚀 Ingia Sasa</button>
     </form>
-    <div class='loading' id='loading'>⏳ Inathibitisha... Subiri sekunde chache...</div>
+    <div class='loading' id='loading'>⏳ Inathibitisha... Subiri...</div>
     <a href='/' class='back'>← Rudi Nyuma</a>
   </div>
 </div>
@@ -463,28 +404,28 @@ function showLoading(){
 void handleVerify() {
   String txid = server.arg("txid");
   String phone = server.arg("phone");
-  String mac = getMACFromIP(server.client().remoteIP().toString());
+  String ip = getClientIP();
 
   txid.trim();
-  txid.toUpperCase();
+  Serial.println("Verify: TXID=" + txid + " Phone=" + phone + " IP=" + ip);
 
-  Serial.println("Verify: TXID=" + txid + " Phone=" + phone + " MAC=" + mac);
+  // Trial ya bure
+  if (txid == "BUSHIRIPROJECT") {
+    addSession(ip, 30UL * 60000UL); // Dakika 30
+    server.sendHeader("Location", "/success?phone=" + phone + "&trial=1");
+    server.send(302);
+    return;
+  }
 
   if (txid.length() < 6) {
     sendErrorPage("TXID ni fupi mno. Angalia SMS yako tena.");
     return;
   }
 
-  // Verify na VPS
   String message = "";
-  bool success = verifyWithVPS(txid, mac, message);
+  bool success = verifyWithVPS(txid, ip, message);
 
   if (success) {
-    // Ongeza session
-    addSession(mac);
-    Serial.println("Session added for: " + mac);
-
-    // Peleka success page
     server.sendHeader("Location", "/success?phone=" + phone);
     server.send(302);
   } else {
@@ -495,6 +436,8 @@ void handleVerify() {
 // ==================== SUCCESS PAGE ====================
 void successPage() {
   String phone = server.arg("phone");
+  bool isTrial = server.arg("trial") == "1";
+
   String html = R"(<!DOCTYPE html><html><head>
 <meta charset='utf-8'>
 <meta name='viewport' content='width=device-width, initial-scale=1'>
@@ -514,11 +457,10 @@ p{opacity:0.9;margin:8px 0;font-size:0.95em}
 <div class='card'>
   <div class='icon'>🎉</div>
   <h1>Hongera!</h1>
-  <p>Internet imewashwa kwa mafanikio!</p>
+  <p>Internet imewashwa!</p>
   <div class='info'>
     <div class='info-item'><span>📱 Simu</span><span>)" + phone.substring(0,4) + R"(******</span></div>
-    <div class='info-item'><span>⏰ Muda</span><span>Siku nzima</span></div>
-    <div class='info-item'><span>💰 Kiasi</span><span>TZS 800</span></div>
+    <div class='info-item'><span>⏰ Muda</span><span>)" + String(isTrial ? "Dakika 30 (Trial)" : "Masaa 15") + R"(</span></div>
   </div>
   <p>Inakupeleka Google baada ya sekunde 5...</p>
   <a href='http://google.com' class='btn'>🌐 Nenda Internet</a>
@@ -557,14 +499,19 @@ h2{font-size:1.5em;margin-bottom:15px}
 
 // ==================== CAPTIVE REDIRECT ====================
 void captiveRedirect() {
-  String mac = getMACFromIP(server.client().remoteIP().toString());
+  String ip = getClientIP();
+  String host = server.hostHeader();
 
-  if (isAuthorized(mac)) {
-    server.send(200, "text/plain", "OK - Internet Imeunganika");
-  } else {
-    server.sendHeader("Location", "http://192.168.4.1/");
-    server.send(302);
+  if (isAuthorized(ip)) {
+    server.send(204, "text/plain", "");
+    return;
   }
+
+  server.sendHeader("Location", "http://192.168.4.1/", true);
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "-1");
+  server.send(302, "text/plain", "");
 }
 
 // ==================== ADMIN PANEL ====================
@@ -584,28 +531,25 @@ void adminPanel() {
   html += ".box{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px;margin:10px 0}";
   html += ".stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #21262d}";
   html += "a{color:#58a6ff;text-decoration:none;margin-right:15px}";
-  html += ".mac{font-size:11px;color:#8b949e;padding:3px 0}</style></head><body>";
+  html += ".ip{font-size:11px;color:#8b949e;padding:3px 0}</style></head><body>";
   html += "<h1>🛜 BUSHIRI v" VERSION " Admin</h1>";
   html += "<div class='box'>";
   html += "<div class='stat'><span>Internet</span><span>" + internetStatus + "</span></div>";
   html += "<div class='stat'><span>Wateja Sasa</span><span>" + String(clientCount) + "</span></div>";
   html += "<div class='stat'><span>Sessions Aktif</span><span>" + String(sessionCount) + "</span></div>";
-  html += "<div class='stat'><span>Bei</span><span>TZS 800/Siku</span></div>";
+  html += "<div class='stat'><span>Bei</span><span>TZS 800/Masaa 15</span></div>";
   html += "</div>";
-  html += "<h3>Sessions Zilizo Aktif:</h3><div class='box'>";
+  html += "<h3>Sessions:</h3><div class='box'>";
   int active = 0;
   for (int i = 0; i < sessionCount; i++) {
-    if (sessions[i].active) {
-      unsigned long remaining = 0;
-      if (sessions[i].expiry > millis()) {
-        remaining = (sessions[i].expiry - millis()) / 3600000;
-      }
-      html += "<div class='mac'>" + sessions[i].mac;
-      html += " | Masaa " + String(remaining) + " zimebaki</div>";
+    if (sessions[i].active && millis() < sessions[i].expiry) {
+      unsigned long remaining = (sessions[i].expiry - millis()) / 60000;
+      html += "<div class='ip'>" + sessions[i].ip;
+      html += " | Dakika " + String(remaining) + " zimebaki</div>";
       active++;
     }
   }
-  if (active == 0) html += "<div class='mac'>Hakuna sessions za sasa</div>";
+  if (active == 0) html += "<div class='ip'>Hakuna sessions za sasa</div>";
   html += "</div>";
   html += "<h3>Mipangilio:</h3>";
   html += "<a href='/wifi-config'>⚙️ WiFi Config</a>";
@@ -628,19 +572,20 @@ void wifiConfigPage() {
   html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
   html += "<title>WiFi Config</title>";
   html += "<style>body{background:#111;color:#fff;font-family:monospace;padding:20px}";
-  html += "h2{color:#e91e63}input{width:100%;padding:12px;margin:6px 0 14px;background:#222;color:#fff;border:1px solid #444;border-radius:8px;font-size:15px;box-sizing:border-box}";
+  html += "h2{color:#e91e63}";
+  html += "input{width:100%;padding:12px;margin:6px 0 14px;background:#222;color:#fff;border:1px solid #444;border-radius:8px;font-size:15px;box-sizing:border-box}";
   html += ".btn{width:100%;padding:14px;background:#e91e63;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-weight:bold}";
   html += ".status{padding:12px;background:#1a1a1a;border-left:4px solid #e91e63;margin:12px 0;border-radius:4px}";
   html += "a{color:#e91e63}</style></head><body>";
-  html += "<h2>⚙️ WiFi Internet Config</h2>";
+  html += "<h2>⚙️ WiFi Config</h2>";
   html += "<div class='status'>" + status + "</div>";
   html += "<form method='POST' action='/wifi-save'>";
-  html += "<label>SSID (Jina la WiFi/Hotspot):</label>";
-  html += "<input type='text' name='ssid' value='" + sta_ssid + "' placeholder='Jina la hotspot yako'>";
+  html += "<label>SSID:</label>";
+  html += "<input type='text' name='ssid' value='" + sta_ssid + "' placeholder='Jina la WiFi'>";
   html += "<label>Password:</label>";
-  html += "<input type='password' name='pass' value='" + sta_pass + "' placeholder='Password (acha wazi kama open)'>";
+  html += "<input type='password' name='pass' value='" + sta_pass + "' placeholder='Password'>";
   html += "<button type='submit' class='btn'>💾 Hifadhi na Restart</button>";
-  html += "</form><br><a href='/admin'>← Admin Panel</a>";
+  html += "</form><br><a href='/admin'>← Admin</a>";
   html += "</body></html>";
   server.send(200, "text/html", html);
 }
@@ -654,8 +599,8 @@ void saveWifiConfig() {
     server.send(200, "text/html",
       "<html><body style='background:#111;color:lime;font-family:monospace;text-align:center;padding:50px'>"
       "<h1>✅ Imehifadhiwa!</h1><p>ESP32 inarestart...</p>"
-      "<p>Unganika tena kwa: <b>" + String(AP_SSID) + "</b></p>"
-      "<p>Kisha nenda: 192.168.4.1/admin</p></body></html>");
+      "<p>Unganika: <b>" + String(AP_SSID) + "</b></p>"
+      "<p>Nenda: 192.168.4.1/admin</p></body></html>");
     delay(2000);
     ESP.restart();
   } else {
@@ -668,7 +613,7 @@ void saveWifiConfig() {
 void setupOTA() {
   server.on("/update", HTTP_GET, []() {
     server.send(200, "text/html",
-      "<!DOCTYPE html><html><head><meta charset='utf-8'><title>OTA Update</title>"
+      "<!DOCTYPE html><html><head><meta charset='utf-8'><title>OTA</title>"
       "<style>body{background:#111;color:#fff;font-family:monospace;padding:30px;text-align:center}"
       "input,button{padding:12px;margin:10px;border-radius:8px;font-size:15px}"
       "button{background:#e91e63;color:white;border:none;cursor:pointer;width:200px}"
@@ -676,8 +621,8 @@ void setupOTA() {
       "<h2>🔄 OTA Firmware Update</h2>"
       "<form method='POST' action='/update' enctype='multipart/form-data'>"
       "<input type='file' name='update' accept='.bin'><br>"
-      "<button type='submit'>Upload Firmware</button></form>"
-      "<br><a href='/admin'>← Admin Panel</a></body></html>");
+      "<button type='submit'>Upload</button></form>"
+      "<br><a href='/admin'>← Admin</a></body></html>");
   });
 
   server.on("/update", HTTP_POST, []() {
@@ -686,7 +631,6 @@ void setupOTA() {
   }, []() {
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
-      Serial.println("OTA: " + upload.filename);
       Update.begin(UPDATE_SIZE_UNKNOWN);
     } else if (upload.status == UPLOAD_FILE_WRITE) {
       Update.write(upload.buf, upload.currentSize);
@@ -699,12 +643,14 @@ void loop() {
   dnsServer.processNextRequest();
   server.handleClient();
 
-  // Maintain WiFi
   if (millis() - lastHeartbeat > 30000) {
     maintainWiFi();
+    if (WiFi.status() == WL_CONNECTED) {
+      ip_napt_enable(htonl(0xC0A80401), 1);
+    }
     lastHeartbeat = millis();
     clientCount = WiFi.softAPgetStationNum();
-    Serial.println("Clients: " + String(clientCount) + " | Sessions: " + String(sessionCount));
+    Serial.println("Clients: " + String(clientCount) + " Sessions: " + String(sessionCount));
   }
 
   delay(10);
