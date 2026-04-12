@@ -270,18 +270,75 @@ void setupWebServer() {
   server.on("/wifi-config", HTTP_GET, wifiConfigPage);
   server.on("/wifi-save", HTTP_POST, saveWifiConfig);
   server.onNotFound(captiveRedirect);
-  server.begin();
+  server.begin();// Android captive portal detection
+server.on("/generate_204", HTTP_GET, []() {
+  String mac = getMACFromIP(server.client().remoteIP().toString());
+  if (isAuthorized(mac)) {
+    server.send(204, "text/plain", "");
+  } else {
+    server.sendHeader("Location", "http://192.168.4.1/");
+    server.send(302, "text/plain", "");
+  }
+});
+
+// iPhone captive portal detection  
+server.on("/hotspot-detect.html", HTTP_GET, []() {
+  String mac = getMACFromIP(server.client().remoteIP().toString());
+  if (isAuthorized(mac)) {
+    server.send(200, "text/html", "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+  } else {
+    server.sendHeader("Location", "http://192.168.4.1/");
+    server.send(302, "text/plain", "");
+  }
+});
+
+// Windows captive portal detection
+server.on("/connecttest.txt", HTTP_GET, []() {
+  String mac = getMACFromIP(server.client().remoteIP().toString());
+  if (isAuthorized(mac)) {
+    server.send(200, "text/plain", "Microsoft Connect Test");
+  } else {
+    server.sendHeader("Location", "http://192.168.4.1/");
+    server.send(302, "text/plain", "");
+  }
+});
+
+// Samsung
+server.on("/generate_204", HTTP_GET, []() {
+  String mac = getMACFromIP(server.client().remoteIP().toString());
+  if (isAuthorized(mac)) {
+    server.send(204, "text/plain", "");
+  } else {
+    server.sendHeader("Location", "http://192.168.4.1/");
+    server.send(302, "text/plain", "");
+  }
+});
 }
 
 // ==================== PORTAL PAGE (Ukurasa wa Kwanza) ====================
-void portalPage() {
+void captiveRedirect() {
   String mac = getMACFromIP(server.client().remoteIP().toString());
-
-  // Kama tayari ameidhinishwa - mpeleka internet
+  
   if (isAuthorized(mac)) {
-    server.sendHeader("Location", "http://google.com");
-    server.send(302);
+    // Mteja ameruhuliwa - mruhusu apite
+    // Jibu generate_204 vizuri ili android ijue internet ipo
+    server.send(204, "text/plain", "");
     return;
+  }
+  
+  // Mteja hajalipia - redirect kwenye portal
+  String host = server.hostHeader();
+  
+  // Kama ni captive portal check - redirect
+  if (host != "192.168.4.1") {
+    server.sendHeader("Location", "http://192.168.4.1/", true);
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    server.send(302, "text/plain", "");
+    return;
+  }
+  
+  // Onyesha portal
+  portalPage();
   }
 
   String html = R"(<!DOCTYPE html><html><head>
