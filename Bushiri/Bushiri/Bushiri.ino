@@ -22,7 +22,7 @@ const char* VPS_HOST    = "bushiri-project.onrender.com";
 const int   VPS_PORT    = 443;
 const char* VPS_TOKEN   = "bushiri2026";
 const char* PORTAL_TITLE = "BUSHIRI HOTSPOT";
-const char* MPESA_NUMBER = "0790385813";
+const char* MIXX BY YAS_NUMBER = "0717633805";
 const char* STA_SSID_ALT = "infinitynetwork";
 const char* STA_PASS_ALT = ".kibushi1";
 
@@ -237,12 +237,19 @@ void setup() {
   IPAddress local_IP(192, 168, 4, 1);
   IPAddress gateway(192, 168, 4, 1);
   IPAddress subnet(255, 255, 255, 0);
-  WiFi.softAPConfig(local_IP, gateway, subnet);
+  IPAddress dns(8, 8, 8, 8);
+WiFi.softAPConfig(local_IP, gateway, subnet);
   WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 8);
-
+// Weka DNS kwa wateja
+IPAddress apIP(192, 168, 4, 1);
+dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+dnsServer.start(53, "*", apIP);
   connectToInternet();// Washa NAT routing
 if (WiFi.status() == WL_CONNECTED) {
   ip_napt_enable(htonl(0xC0A80401), 1);
+delay(1000); // Subiri WiFi iwe stable
+ip_napt_enable(htonl(0xC0A80401), 1);
+Serial.println("NAT Enabled!");
   Serial.println("NAT Enabled!");
 }
 
@@ -297,7 +304,7 @@ body{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);min-height:100vh
 .step{display:flex;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0;font-size:0.9em;color:#444}
 .step-num{background:#e91e63;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:0.8em;margin-right:10px;flex-shrink:0}
 .btn{display:block;width:100%;padding:15px;background:linear-gradient(135deg,#e91e63,#c2185b);color:white;border:none;border-radius:12px;font-size:1.1em;font-weight:700;text-align:center;text-decoration:none;cursor:pointer;margin-top:15px}
-.mpesa-num{background:#e8f5e9;border-radius:8px;padding:10px;text-align:center;font-weight:700;font-size:1.1em;color:#2e7d32;margin:10px 0}
+.mixx by yas-num{background:#e8f5e9;border-radius:8px;padding:10px;text-align:center;font-weight:700;font-size:1.1em;color:#2e7d32;margin:10px 0}
 </style></head><body>
 <div class='card'>
   <div class='header'>
@@ -311,10 +318,10 @@ body{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);min-height:100vh
       <div class='price-label'>= Siku nzima ya internet</div>
     </div>
     <div class='steps'>
-      <div class='step'><div class='step-num'>1</div>Tuma TZS 800 kwa M-Pesa</div>
+      <div class='step'><div class='step-num'>1</div>Tuma TZS 800 kwa Mixx by yas</div>
       <div class='step'><div class='step-num'>2</div>Nambari ya kulipa:</div>
     </div>
-    <div class='mpesa-num'>📱 )" + String(MPESA_NUMBER) + R"(</div>
+    <div class='mixxby-num'>📱 )" + String(MIXX BY YAS_NUMBER) + R"(</div>
     <div class='step' style='padding:8px 0;font-size:0.9em;color:#444'>
       <div class='step-num'>3</div>Bonyeza kitufe hapa chini na weka nambari ya muamala
     </div>
