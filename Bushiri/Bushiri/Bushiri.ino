@@ -22,7 +22,7 @@ const char* VPS_HOST    = "bushiri-project.onrender.com";
 const int   VPS_PORT    = 443;
 const char* VPS_TOKEN   = "bushiri2026";
 const char* PORTAL_TITLE = "BUSHIRI HOTSPOT";
-const char* MIXX BY YAS_NUMBER = "0717633805";
+const char* MIXX_NUMBER = "0717633805";
 const char* STA_SSID_ALT = "infinitynetwork";
 const char* STA_PASS_ALT = ".kibushi1";
 
@@ -228,7 +228,7 @@ bool verifyWithVPS(String txid, String mac, String &message) {
 void setup() {
   Serial.begin(115200);
   delay(2000);
-  Serial.println("BUSHIRI v3.0 - MPESA Edition");
+  Serial.println("BUSHIRI v3.0 - MIXX Edition");
 
   prefs.begin("bushiri");
   loadSessionsFromPrefs();
@@ -321,7 +321,7 @@ body{background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);min-height:100vh
       <div class='step'><div class='step-num'>1</div>Tuma TZS 800 kwa Mixx by yas</div>
       <div class='step'><div class='step-num'>2</div>Nambari ya kulipa:</div>
     </div>
-    <div class='mixxby-num'>📱 )" + String(MIXX BY YAS_NUMBER) + R"(</div>
+    <div class='mixxby-num'>📱 )" + String(MIXX_NUMBER) + R"(</div>
     <div class='step' style='padding:8px 0;font-size:0.9em;color:#444'>
       <div class='step-num'>3</div>Bonyeza kitufe hapa chini na weka nambari ya muamala
     </div>
